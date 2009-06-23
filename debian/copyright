@@ -1,6 +1,6 @@
 This package was debianized by cristian paul peñaranda rojas <kristian.paul@gmail.com> on
 and is licensed under the GNU General Public License (GPL) version 3.
-A copy of the GNU GPL version 2 is in `/usr/share/common-licenses/GPL-3'.
+A copy of the GNU GPL version 3 is in `/usr/share/common-licenses/GPL-3'.
 
 Sat, 29 Nov 2008 00:31:58 -0500.
 
@@ -88,7 +88,7 @@ The Files:
 
 Copyright (C) 1996 - 2005 Markus Franz Xaver Johannes Oberhumer
 
-These file are part of the LZO real-time data compression library.
+These files are part of the LZO real-time data compression library.
 
    All Rights Reserved.
 

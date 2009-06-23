@@ -2,8 +2,8 @@ Source: n2n
 Section: net
 Priority: extra
 Maintainer: cristian paul peñaranda rojas <kristian.paul@gmail.com>
-Build-Depends: debhelper (>= 5), libc6-dev (>= 2.0), quilt
-Standards-Version: 3.8.0
+Build-Depends: debhelper (>= 7), quilt
+Standards-Version: 3.8.2
 
 Package: n2n
 Architecture: any

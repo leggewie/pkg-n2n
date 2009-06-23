@@ -1,5 +1,6 @@
 /*
- * (C) 2007-08 - Luca Deri <deri@ntop.org>
+ * (C) 2007-09 - Luca Deri <deri@ntop.org>
+ *               Richard Andrews <andrews@ntop.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -74,10 +75,13 @@ extern void peer_addr2sockaddr_in(const struct peer_addr *in, struct sockaddr_in
 /* ************************************** */
 
 static
-int marshall_peer_addr( u_int8_t * buf, const struct peer_addr * s )
+int marshall_peer_addr( u_int8_t * buf, size_t * offset, const struct peer_addr * s )
 {
-  memcpy( buf, s, sizeof(struct peer_addr));
-  buf += sizeof(struct peer_addr);
+ /* RA: I'm pretty sure that this is broken. There is no guarantee that the
+  * peer_addr structure is packed. This will always work between like hosts but
+  * is almost certainly broken between different host types. */
+  memcpy( buf + *offset, s, sizeof(struct peer_addr));
+  *offset += sizeof(struct peer_addr);
 
   return sizeof(struct peer_addr); /* bytes written */
 }
@@ -85,74 +89,80 @@ int marshall_peer_addr( u_int8_t * buf, const struct peer_addr * s )
 /* ************************************** */
 
 static
-int marshall_uint32( u_int8_t * buf, u_int32_t val )
+int marshall_uint32( u_int8_t * buf, size_t * offset, u_int32_t val )
 {
-  u_int32_t * nu32 = (u_int32_t *)buf;
-  *nu32 = htonl(val);
+    buf[*offset + 0] = ((val >> 24) & 0xff);
+    buf[*offset + 1] = ((val >> 16) & 0xff);
+    buf[*offset + 2] = ((val >>  8) & 0xff);
+    buf[*offset + 3] = ((val      ) & 0xff);
 
-  return 4;
+    *offset += 4;
+    return 4;
 }
 
 /* ************************************** */
 
 int marshall_n2n_packet_header( u_int8_t * buf, const struct n2n_packet_header * hdr )
 {
-  u_int8_t * bufStart = buf;
+  size_t offset = 0;
 
   print_header( "Marshalling ", hdr );
 
-  *buf = hdr->version;
-  ++buf;
+  *(buf+offset) = hdr->version;
+  ++offset;
 
-  *buf = hdr->msg_type;
-  ++buf;
+  *(buf+offset) = hdr->msg_type;
+  ++offset;
 
-  *buf = hdr->ttl;
-  ++buf;
+  *(buf+offset) = hdr->ttl;
+  ++offset;
 
-  *buf = hdr->sent_by_supernode;
-  ++buf;
+  *(buf+offset) = hdr->sent_by_supernode;
+  ++offset;
 
-  memcpy( buf, hdr->community_name, COMMUNITY_LEN );
-  buf += COMMUNITY_LEN;
+  memcpy( buf+offset, hdr->community_name, COMMUNITY_LEN );
+  offset += COMMUNITY_LEN;
 
-  memcpy( buf, hdr->src_mac, 6 );
-  buf += 6;
+  memcpy( buf+offset, hdr->src_mac, 6 );
+  offset += 6;
 
-  memcpy( buf, hdr->dst_mac, 6 );
-  buf += 6;
+  memcpy( buf+offset, hdr->dst_mac, 6 );
+  offset += 6;
 
-  buf += marshall_peer_addr( buf, &(hdr->public_ip) );
-  buf += marshall_peer_addr( buf, &(hdr->private_ip) );
+  marshall_peer_addr( buf, &offset, &(hdr->public_ip) );
+  marshall_peer_addr( buf, &offset, &(hdr->private_ip) );
 
-  *buf = (hdr->pkt_type & 0xff);
-  ++buf;
+  *(buf+offset) = (hdr->pkt_type & 0xff);
+  ++offset;
 
-  buf += marshall_uint32( buf, hdr->sequence_id );
-  buf += marshall_uint32( buf, hdr->crc );
+  marshall_uint32( buf, &offset, hdr->sequence_id );
+  marshall_uint32( buf, &offset, hdr->crc );
 
-  return (buf - bufStart);
+  return offset;
 }
 
 /* ************************************** */
 
 static
-int unmarshall_peer_addr( struct peer_addr * s,
+int unmarshall_peer_addr( struct peer_addr * s, size_t * offset,
 			  const u_int8_t * buf )
 {
-  memcpy(s, buf, sizeof(struct peer_addr));
-  buf += sizeof(struct peer_addr);
+  memcpy(s, buf + *offset, sizeof(struct peer_addr));
+  *offset += sizeof(struct peer_addr);
   return (sizeof(struct peer_addr)); /* bytes written */
 }
 
 /* ************************************** */
 
 static
-int unmarshall_uint32( u_int32_t * val, const u_int8_t * buf )
+int unmarshall_uint32( u_int32_t * val, size_t * offset, const u_int8_t * buf )
 {
-  u_int32_t * nu32 = (u_int32_t *)buf;
-  *val = ntohl(*nu32);
+  *val  = ( (buf[*offset + 0] & 0xff) << 24 );
+  *val |= ( (buf[*offset + 1] & 0xff) << 16 );
+  *val |= ( (buf[*offset + 2] & 0xff) <<  8 );
+  *val |= ( (buf[*offset + 3] & 0xff)       );
 
+  *offset += 4;
   return 4;
 }
 
@@ -160,41 +170,41 @@ int unmarshall_uint32( u_int32_t * val, const u_int8_t * buf )
 
 int unmarshall_n2n_packet_header( struct n2n_packet_header * hdr, const u_int8_t * buf )
 {
-  const u_int8_t * bufStart = buf;
+  size_t offset=0;
 
-  hdr->version = *buf;
-  ++buf;
+  hdr->version = *(buf + offset);
+  ++offset;
 
-  hdr->msg_type = *buf;
-  ++buf;
+  hdr->msg_type = *(buf + offset);
+  ++offset;
 
-  hdr->ttl = *buf;
-  ++buf;
+  hdr->ttl = *(buf + offset);
+  ++offset;
 
-  hdr->sent_by_supernode = *buf;
-  ++buf;
+  hdr->sent_by_supernode = *(buf + offset);
+  ++offset;
 
-  memcpy( hdr->community_name, buf, COMMUNITY_LEN );
-  buf += COMMUNITY_LEN;
+  memcpy( hdr->community_name, (buf + offset), COMMUNITY_LEN );
+  offset += COMMUNITY_LEN;
 
-  memcpy( hdr->src_mac, buf, 6 );
-  buf += 6;
+  memcpy( hdr->src_mac, (buf + offset), 6 );
+  offset += 6;
 
-  memcpy( hdr->dst_mac, buf, 6 );
-  buf += 6;
+  memcpy( hdr->dst_mac, (buf + offset), 6 );
+  offset += 6;
 
-  buf += unmarshall_peer_addr( &(hdr->public_ip), buf );
-  buf += unmarshall_peer_addr( &(hdr->private_ip), buf );
+  unmarshall_peer_addr( &(hdr->public_ip),  &offset, buf );
+  unmarshall_peer_addr( &(hdr->private_ip), &offset, buf );
 
-  hdr->pkt_type = (*buf & 0xff); /* Make sure only 8 bits are copied. */
-  ++buf;
+  hdr->pkt_type = (*(buf + offset) & 0xff); /* Make sure only 8 bits are copied. */
+  ++offset;
 
-  buf += unmarshall_uint32( &(hdr->sequence_id), buf );
-  buf += unmarshall_uint32( &(hdr->crc), buf );
+  unmarshall_uint32( &(hdr->sequence_id), &offset, buf );
+  unmarshall_uint32( &(hdr->crc),         &offset, buf );
 
   print_header( "Unmarshalled ", hdr );
 
-  return (buf - bufStart);
+  return offset;
 }
 
 /* ************************************** */
@@ -292,7 +302,9 @@ void traceEvent(int eventTraceLevel, char* file, int line, char * format, ...) {
     char theDate[N2N_TRACE_DATESIZE];
     char *extra_msg = "";
     time_t theTime = time(NULL);
-
+#ifdef WIN32
+	int i;
+#endif
 
     /* We have two paths - one if we're logging, one if we aren't
      *   Note that the no-log case is those systems which don't support it (WIN32),
@@ -330,7 +342,8 @@ void traceEvent(int eventTraceLevel, char* file, int line, char * format, ...) {
     }
 #else
     /* this is the WIN32 code */
-    snprintf(out_buf, sizeof(out_buf), "%s [%11s:%4d] %s%s", theDate, file, line, extra_msg, buf);
+	for(i=strlen(file)-1; i>0; i--) if(file[i] == '\\') { i++; break; };
+    snprintf(out_buf, sizeof(out_buf), "%s [%11s:%4d] %s%s", theDate, &file[i], line, extra_msg, buf);
     printf("%s\n", out_buf);
     fflush(stdout);
 #endif
@@ -385,7 +398,7 @@ void fill_standard_header_fields(n2n_sock_info_t * sinfo,
 				 struct n2n_packet_header *hdr, char *src_mac) {
   socklen_t len = sizeof(hdr->private_ip);
   memset(hdr, 0, N2N_PKT_HDR_SIZE);
-  hdr->version = N2N_VERSION;
+  hdr->version = N2N_PKT_VERSION;
   hdr->crc = 0; // FIX
   if(src_mac != NULL) memcpy(hdr->src_mac, src_mac, 6);
   getsockname(sinfo->sock, (struct sockaddr*)&hdr->private_ip, &len);
@@ -405,6 +418,7 @@ void send_ack(n2n_sock_info_t * sinfo,
   u_int8_t pkt[ N2N_PKT_HDR_SIZE ];
   size_t len = sizeof(hdr);
   size_t len2;
+  int compress_data = N2N_COMPRESSION_ENABLED;
 
   fill_standard_header_fields(sinfo, &hdr, src_mac);
   hdr.msg_type = MSG_TYPE_ACK_RESPONSE;
@@ -414,7 +428,7 @@ void send_ack(n2n_sock_info_t * sinfo,
   len2=marshall_n2n_packet_header( pkt, &hdr );
   assert( len2 == len );
 
-  send_packet(sinfo, (char*)pkt, &len, remote_peer, 1);
+  send_packet(sinfo, (char*)pkt, &len, remote_peer, compress_data);
 }
 
 /* *********************************************** */
@@ -469,17 +483,26 @@ u_int receive_data(n2n_sock_info_t * sinfo,
 #endif
     return(0);
   } else if(len > MIN_COMPRESSED_PKT_LEN) {
-    char decompressed[2048];
+#define N2N_DECOMPRESS_BUFSIZE 2048
+    char decompressed[N2N_DECOMPRESS_BUFSIZE];
     int rc;
-    lzo_uint decompressed_len;
+    lzo_uint decompressed_len=N2N_DECOMPRESS_BUFSIZE;
+    size_t insize = len-N2N_PKT_HDR_SIZE;
 
     if(decompress_data) {
-      rc = lzo1x_decompress((u_char*)&packet[N2N_PKT_HDR_SIZE],
-			    len-N2N_PKT_HDR_SIZE,
-			    (u_char*)decompressed, &decompressed_len, NULL);
+      rc = lzo1x_decompress_safe((u_char*)&packet[N2N_PKT_HDR_SIZE],
+                                 insize,
+                                 (u_char*)decompressed, &decompressed_len, NULL);
 
       if(rc == LZO_E_OK)
-	traceEvent(TRACE_INFO, "%u bytes decompressed into %u", len, decompressed_len);
+      {
+	traceEvent(TRACE_INFO, "%u bytes decompressed into %u", insize, decompressed_len);
+      }
+      else
+      {
+        traceEvent(TRACE_WARNING, "Failed to decompress %u byte packet. LZO error=%d", insize, rc );
+        return -1;
+      }
 
       if(packet_len > decompressed_len) {
 	memcpy(&packet[N2N_PKT_HDR_SIZE], decompressed, decompressed_len);
@@ -584,9 +607,9 @@ static HEAP_ALLOC(wrkmem,LZO1X_1_MEM_COMPRESS);
 u_int send_data(n2n_sock_info_t * sinfo,
 		char *packet, size_t *packet_len,
 		const struct peer_addr *to, u_int8_t compress_data) {
-  char compressed[1600];
+  char compressed[1650];
   int rc;
-  lzo_uint compressed_len;
+  lzo_uint compressed_len=0;
   struct sockaddr_in destsock;
 
   if(*packet_len < N2N_PKT_HDR_SIZE) {
@@ -603,6 +626,13 @@ u_int send_data(n2n_sock_info_t * sinfo,
 			  *packet_len - N2N_PKT_HDR_SIZE,
 			  (u_char*)&compressed[N2N_PKT_HDR_SIZE],
 			  &compressed_len, wrkmem);
+
+    if ( 0 == compressed_len )
+    {
+      traceEvent(TRACE_WARNING, "failed to compress %u bytes.", (*packet_len - N2N_PKT_HDR_SIZE) );
+      return -1;
+    }
+
     compressed_len += N2N_PKT_HDR_SIZE;
 
     traceEvent(TRACE_INFO, "%u bytes compressed into %u", *packet_len, compressed_len);

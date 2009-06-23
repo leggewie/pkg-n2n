@@ -1,5 +1,6 @@
 /*
- * (C) 2007-08 - Luca Deri <deri@ntop.org>
+ * (C) 2007-09 - Luca Deri <deri@ntop.org>
+ *               Richard Andrews <andrews@ntop.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,7 +16,6 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>
  *
  * Code contributions courtesy of:
- * Richard Andrews <bbmaj7@yahoo.com.au>
  * Babak Farrokhi <babak@farrokhi.net> [FreeBSD port]
  *
 */
@@ -113,7 +113,7 @@ typedef struct tuntap_dev {
 #endif /* #ifndef WIN32 */
 
 #define QUICKLZ               1
-#define N2N_VERSION           1
+#define N2N_PKT_VERSION       1
 
 #define MSG_TYPE_REGISTER     1 /* FIX invece di usare il sender del pacchetto scriverlo nel pacchetto stesso */
 #define MSG_TYPE_DEREGISTER   2
@@ -123,6 +123,14 @@ typedef struct tuntap_dev {
 
 #define COMMUNITY_LEN           16
 #define MIN_COMPRESSED_PKT_LEN  32
+
+/* Set N2N_COMPRESSION_ENABLED to 0 to disable lzo1x compression of ethernet
+ * frames. Doing this will break compatibility with the standard n2n packet
+ * format so do it only for experimentation. All edges must be built with the
+ * same value if they are to understand each other. */
+#define N2N_COMPRESSION_ENABLED 1
+
+#define DEFAULT_MTU   1400
 
 /* Maximum enum value is 255 due to marshalling into 1 byte */
 enum packet_type {
@@ -234,7 +242,8 @@ extern void send_ack(n2n_sock_info_t * sinfo,
 		     char *src_mac);
 
 extern void traceEvent(int eventTraceLevel, char* file, int line, char * format, ...);
-extern int  tuntap_open(tuntap_dev *device, char *dev, char *device_ip, char *device_mask, const char * device_mac );
+extern int  tuntap_open(tuntap_dev *device, char *dev, char *device_ip, 
+			char *device_mask, const char * device_mac, int mtu);
 extern int  tuntap_read(struct tuntap_dev *tuntap, unsigned char *buf, int len);
 extern int  tuntap_write(struct tuntap_dev *tuntap, unsigned char *buf, int len);
 extern void tuntap_close(struct tuntap_dev *tuntap);
