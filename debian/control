@@ -8,7 +8,7 @@ Standards-Version: 3.8.2
 
 Package: n2n
 Architecture: any
-Depends: ${shlibs:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: Peer-to-Peer VPN network daemon
  n2n is an open source VPN application which utilizes 
  a Peer-to-peer architecture for network membership 
