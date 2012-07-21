@@ -1,5 +1,6 @@
 /*
- * (C) 2007-08 - Luca Deri <deri@ntop.org>
+ * (C) 2007-09 - Luca Deri <deri@ntop.org>
+ *               Richard Andrews <andrews@ntop.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,9 +14,6 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, see <http://www.gnu.org/licenses/>
- *
- * Code contributions courtesy of:
- * Richard Andrews <bbmaj7@yahoo.com.au>
  *
 */
 
@@ -65,7 +63,7 @@ static void send_register_ack( n2n_sock_info_t * sinfo,
     /* leave IP sockets unfilled. */
 
     marshall_n2n_packet_header( pkt, &hdr );
-    send_packet(sinfo, (char *)pkt, &len, destination_peer, 1);
+    send_packet(sinfo, (char *)pkt, &len, destination_peer, N2N_COMPRESSION_ENABLED);
 }
 
 static void register_peer(struct n2n_packet_header *hdr,
@@ -90,7 +88,7 @@ static void register_peer(struct n2n_packet_header *hdr,
         memcpy(&scan->private_ip, &hdr->private_ip, sizeof(struct peer_addr));
 
         /* Overwrite existing peer */
-        traceEvent(TRACE_NORMAL, "Re-registered node [public_ip=(%d)%s:%d][private_ip=%s:%d][mac=%s][community=%s]",
+        traceEvent(TRACE_NORMAL, "Re-registered node [public_ip=(%d)%s:%hd][private_ip=%s:%hd][mac=%s][community=%s]",
                    scan->public_ip.family,
                    intoa(ntohl(scan->public_ip.addr_type.v4_addr), buf, sizeof(buf)),
                    ntohs(scan->public_ip.port),
@@ -144,7 +142,7 @@ static void deregister_peer(struct n2n_packet_header *hdr,
       else
 	prev->next = scan->next;
 
-      traceEvent(TRACE_INFO, "Degistered node [public_ip=%s:%d][private_ip=%s:%d]",
+      traceEvent(TRACE_INFO, "Degistered node [public_ip=%s:%hd][private_ip=%s:%hd]",
 		 intoa(ntohl(scan->public_ip.addr_type.v4_addr), buf, sizeof(buf)),
 		 ntohs(scan->public_ip.port),
 		 intoa(ntohl(scan->private_ip.addr_type.v4_addr), buf1, sizeof(buf1)),
@@ -157,7 +155,7 @@ static void deregister_peer(struct n2n_packet_header *hdr,
     scan = scan->next;
   }
 
-  traceEvent(TRACE_WARNING, "Unable to delete specified peer [%s:%d]",
+  traceEvent(TRACE_WARNING, "Unable to delete specified peer [%s:%hd]",
 	     intoa(ntohl(sender->addr_type.v4_addr), buf, sizeof(buf)),
 	     ntohs(sender->port));
 }
@@ -213,7 +211,7 @@ static size_t broadcast_packet(char *packet, u_int packet_len,
 
                 ++numsent;
                 ++(supernode_stats.pkts);
-                traceEvent(TRACE_INFO, "Sent multicast message to remote node [%s:%d][mac=%s]",
+                traceEvent(TRACE_INFO, "Sent multicast message to remote node [%s:%hd][mac=%s]",
                            intoa(ntohl(scan->public_ip.addr_type.v4_addr), buf, sizeof(buf)),
                            ntohs(scan->public_ip.port),
                            macaddr_str(scan->mac_addr, buf1, sizeof(buf1)));
@@ -287,7 +285,7 @@ static size_t forward_packet(char *packet, u_int packet_len,
             }
             else {
                 ++(supernode_stats.pkts);
-                traceEvent(TRACE_INFO, "Sent message to remote node [%s:%d][mac=%s]",
+                traceEvent(TRACE_INFO, "Sent message to remote node [%s:%hd][mac=%s]",
                            intoa(ntohl(scan->public_ip.addr_type.v4_addr), buf, sizeof(buf)),
                            ntohs(scan->public_ip.port),
                            macaddr_str(scan->mac_addr, buf1, sizeof(buf1)));
@@ -311,7 +309,7 @@ static void handle_packet(char *packet, u_int packet_len,
                           n2n_sock_info_t * sinfo) {
     ipstr_t buf;
 
-    traceEvent(TRACE_INFO, "Received message from node [%s:%d]",
+    traceEvent(TRACE_INFO, "Received message from node [%s:%hd]",
                intoa(ntohl(sender->addr_type.v4_addr), buf, sizeof(buf)),
                ntohs(sender->port));
 
@@ -323,7 +321,7 @@ static void handle_packet(char *packet, u_int packet_len,
 
         unmarshall_n2n_packet_header( hdr, (u_int8_t *)packet );
 
-        if(hdr->version != N2N_VERSION) {
+        if(hdr->version != N2N_PKT_VERSION) {
             traceEvent(TRACE_WARNING,
                        "Received packet with unknown protocol version (%d): discarded\n",
                        hdr->version);
@@ -444,6 +442,10 @@ int main(int argc, char* argv[]) {
   int opt, local_port = 0;
   n2n_sock_info_t udp_sinfo;
   n2n_sock_info_t tcp_sinfo;
+
+#ifdef WIN32
+  initWin32();
+#endif
 
   optarg = NULL;
   while((opt = getopt_long(argc, argv, "l:vh", long_options, NULL)) != EOF) {

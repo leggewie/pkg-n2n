@@ -22,7 +22,7 @@ function exit_fail()
 }
 
 PACKAGE="n2n"
-PKG_VERSION="1.2"
+PKG_VERSION="1.3"
 PKG_AND_VERSION="${PACKAGE}-${PKG_VERSION}"
 
 TEMPDIR="tmp"
@@ -50,7 +50,6 @@ debian/changelog
 debian/compat
 debian/control
 debian/copyright
-debian/files
 debian/n2n.dirs
 debian/n2n.docs
 debian/n2n.install
@@ -62,7 +61,7 @@ debian/rules
 BASE=`pwd`
 
 for F in ${SOURCE_MANIFEST}; do
-    test -e $F || exit_fail "Wrong directory. Please execute from n2n directory."; >&2
+    test -e $F || exit_fail "Cannot find $F. Maybe you're in the wrong directory. Please execute from n2n directory."; >&2
 done
 
 echo "Found critical files. Proceeding." >&2

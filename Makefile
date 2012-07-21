@@ -1,11 +1,18 @@
 
-N2N_VERSION="1.2.2"
-
+N2N_VERSION="1.3.2"
 
 ########
 
 CC=gcc
-CFLAGS+=-g -Wall -Wshadow -Wpointer-arith -Wmissing-declarations -Wnested-externs #-static
+DEBUG?=-g
+WARN?=-Wall -Wshadow -Wpointer-arith -Wmissing-declarations -Wnested-externs
+
+#Ultrasparc64 users experiencing SIGBUS should try the following gcc options
+#(thanks to Robert Gibbon)
+PLATOPTS_SPARC64=-mcpu=ultrasparc -pipe -fomit-frame-pointer -ffast-math -finline-functions -fweb -frename-registers -mapp-regs
+
+
+CFLAGS+=$(DEBUG) $(WARN) $(OPTIONS) $(PLATOPTS)
 
 INSTALL=install
 MKDIR=mkdir -p
@@ -48,9 +55,9 @@ $(N2N_LIB): $(N2N_OBJS)
 #	$(RANLIB) $@
 
 version.c:
-	echo $(N2N_VERSION) | sed -e 's/.*/char * version   = "&";/' > version.c
-	uname -p | sed -e 's/.*/char * osName    = "&";/' >> version.c
-	date +"%D %r" | sed -e 's/.*/char * buildDate = "&";/' >> version.c
+	@echo $(N2N_VERSION) | sed -e 's/.*/const char * version   = "&";/' > version.c
+	@uname -p | sed -e 's/.*/const char * osName    = "&";/' >> version.c
+	@date +"%D %r" | sed -e 's/.*/const char * buildDate = "&";/' >> version.c
 
 clean:
 	rm -rf $(N2N_OBJS) $(N2N_LIB) $(APPS) $(DOCS) *.dSYM *~ version.c
@@ -62,3 +69,8 @@ install: edge supernode edge.8.gz supernode.1.gz
 	$(INSTALL_PROG) edge $(SBINDIR)/
 	$(INSTALL_DOC) edge.8.gz $(MAN8DIR)/
 	$(INSTALL_DOC) supernode.1.gz $(MAN1DIR)/
+
+# Courtesy of Ole Tange <ole@tange.dk>
+
+deb:
+	dpkg-buildpackage

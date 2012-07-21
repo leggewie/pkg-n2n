@@ -1,5 +1,5 @@
 /*
- * (C) 2007-08 - Luca Deri <deri@ntop.org>
+ * (C) 2007-09 - Luca Deri <deri@ntop.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,7 +28,8 @@ int tuntap_open(tuntap_dev *device /* ignored */,
                 char *dev, 
                 char *device_ip, 
                 char *device_mask,
-                const char * device_mac ) {
+                const char * device_mac,
+		int mtu) {
   int i;
   char tap_device[N2N_FREEBSD_TAPDEVICE_SIZE];
 
@@ -61,8 +62,8 @@ int tuntap_open(tuntap_dev *device /* ignored */,
         system(buf);
     }
 
-    snprintf(buf, sizeof(buf), "ifconfig tap%d %s netmask %s mtu 1400 up",
-             i, device_ip, device_mask);
+    snprintf(buf, sizeof(buf), "ifconfig tap%d %s netmask %s mtu %d up",
+             i, device_ip, device_mask, mtu);
     system(buf);
 
     traceEvent(TRACE_NORMAL, "Interface tap%d up and running (%s/%s)",

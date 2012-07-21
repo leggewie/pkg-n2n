@@ -1,5 +1,6 @@
 /*
  * (C) 2007-09 - Luca Deri <deri@ntop.org>
+ *               Richard Andrews <andrews@ntop.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,8 +16,9 @@
  * along with this program; if not see see <http://www.gnu.org/licenses/>
  *
  * Code contributions courtesy of:
- * Richard Andrews <bbmaj7@yahoo.com.au>
  * Don Bindner <don.bindner@gmail.com>
+ * Sylwester Sosnowski <syso-n2n@no-route.org>
+ * Wilfried "Wonka" Klaebe
  *
  */
 
@@ -49,7 +51,8 @@ struct n2n_edge
   int                 allow_routing /*= 0*/;
   int                 drop_ipv6_ndp /*= 0*/;
   char *              encrypt_key /* = NULL*/;
-  TWOFISH *           tf;
+  TWOFISH *           enc_tf;
+  TWOFISH *           dec_tf;
 
   struct peer_info *  known_peers /* = NULL*/;
   struct peer_info *  pending_peers /* = NULL*/;
@@ -141,7 +144,7 @@ static char ** buildargv(char * const linebuffer) {
   char ** argv;
   char *  buffer, * buff;
 
-  buffer = (char *)malloc(strlen(linebuffer)+2);
+  buffer = (char *)calloc(1, strlen(linebuffer)+2);
   if (!buffer) {
     traceEvent( TRACE_ERROR, "Unable to allocate memory");
     return NULL;
@@ -199,7 +202,8 @@ static int edge_init(n2n_edge_t * eee) {
   eee->allow_routing = 0;
   eee->drop_ipv6_ndp = 0;
   eee->encrypt_key   = NULL;
-  eee->tf            = NULL;
+  eee->enc_tf        = NULL;
+  eee->dec_tf        = NULL;
   eee->known_peers   = NULL;
   eee->pending_peers = NULL;
   eee->last_register = 0;
@@ -214,9 +218,10 @@ static int edge_init(n2n_edge_t * eee) {
 
 static int edge_init_twofish( n2n_edge_t * eee, u_int8_t *encrypt_pwd, u_int32_t encrypt_pwd_len )
 {
-  eee->tf = TwoFishInit(encrypt_pwd, encrypt_pwd_len);
+  eee->enc_tf = TwoFishInit(encrypt_pwd, encrypt_pwd_len);
+  eee->dec_tf = TwoFishInit(encrypt_pwd, encrypt_pwd_len);
 
-  if ( eee->tf )
+  if ( (eee->enc_tf) && (eee->dec_tf) )
     {
       return 0;
     }
@@ -229,7 +234,8 @@ static int edge_init_twofish( n2n_edge_t * eee, u_int8_t *encrypt_pwd, u_int32_t
 /* ************************************** */
 
 static void edge_deinit(n2n_edge_t * eee) {
-  TwoFishDestroy(eee->tf);
+  TwoFishDestroy(eee->enc_tf);
+  TwoFishDestroy(eee->dec_tf);
   if ( eee->sinfo.sock >=0 )
     {
       close( eee->sinfo.sock );
@@ -248,6 +254,7 @@ static void help() {
 	 "-a <tun IP address> "
 	 "-c <community> "
 	 "-k <encrypt key> "
+	 "-s <netmask> "
 #ifndef WIN32
 	 "[-u <uid> -g <gid>]"
 	 "[-f]"
@@ -255,7 +262,7 @@ static void help() {
 	 "[-m <MAC address>]"
 	 "\n"
 	 "-l <supernode host:port> "
-	 "[-p <local port>] "
+	 "[-p <local port>] [-M <mtu>] "
 	 "[-t] [-r] [-v] [-b] [-h]\n\n");
 
 #ifdef __linux__
@@ -265,6 +272,7 @@ static void help() {
   printf("-a <tun IP address>      | n2n IP address\n");
   printf("-c <community>           | n2n community name\n");
   printf("-k <encrypt key>         | Encryption key (ASCII) - also N2N_KEY=<encrypt key>\n");
+  printf("-s <netmask>             | Edge interface netmask in dotted decimal notation (255.255.255.0)\n");
   printf("-l <supernode host:port> | Supernode IP:port\n");
   printf("-b                       | Periodically resolve supernode IP\n");
   printf("                         | (when supernodes are running on dynamic IPs)\n");
@@ -276,6 +284,7 @@ static void help() {
 #endif
   printf("-m <MAC address>         | Choose a MAC address for the TAP interface\n"
          "                         | eg. -m 01:02:03:04:05:06\n");
+  printf("-M <mtu>                 | Specify n2n MTU (default %d)\n", DEFAULT_MTU);
   printf("-t                       | Use http tunneling (experimental)\n");
   printf("-r                       | Enable packet forwarding through n2n community\n");
   printf("-v                       | Verbose\n");
@@ -287,7 +296,6 @@ static void help() {
 }
 
 /* *********************************************** */
-
 
 static void send_register( n2n_edge_t * eee,
 			   const struct peer_addr *remote_peer,
@@ -303,9 +311,9 @@ static void send_register( n2n_edge_t * eee,
   memcpy(hdr.community_name, eee->community_name, COMMUNITY_LEN);
 
   marshall_n2n_packet_header( (u_int8_t *)pkt, &hdr );
-  send_packet( &(eee->sinfo), pkt, &len, remote_peer, 1 );
+  send_packet( &(eee->sinfo), pkt, &len, remote_peer, N2N_COMPRESSION_ENABLED );
 
-  traceEvent(TRACE_INFO, "Sent %s message to %s:%d",
+  traceEvent(TRACE_INFO, "Sent %s message to %s:%hd",
              ((hdr.msg_type==MSG_TYPE_REGISTER)?"MSG_TYPE_REGISTER":"MSG_TYPE_REGISTER_ACK"),
 	     intoa(ntohl(remote_peer->addr_type.v4_addr), ip_buf, sizeof(ip_buf)),
 	     ntohs(remote_peer->port));
@@ -325,7 +333,7 @@ static void send_deregister(n2n_edge_t * eee,
   memcpy(hdr.community_name, eee->community_name, COMMUNITY_LEN);
 
   marshall_n2n_packet_header( (u_int8_t *)pkt, &hdr );
-  send_packet( &(eee->sinfo), pkt, &len, remote_peer, 1);
+  send_packet( &(eee->sinfo), pkt, &len, remote_peer, N2N_COMPRESSION_ENABLED);
 }
 
 /* *********************************************** */
@@ -377,7 +385,7 @@ void try_send_register( n2n_edge_t * eee,
       traceEvent( TRACE_NORMAL, "Pending peers list size=%ld",
 		  peer_list_size( eee->pending_peers ) );
 
-      traceEvent( TRACE_NORMAL, "Sending REGISTER request to %s:%d",
+      traceEvent( TRACE_NORMAL, "Sending REGISTER request to %s:%hd",
 		  intoa(ntohl(scan->public_ip.addr_type.v4_addr), ip_buf, sizeof(ip_buf)),
 		  ntohs(scan->public_ip.port));
 
@@ -396,7 +404,7 @@ void try_send_register( n2n_edge_t * eee,
 	  /* over-write supernode-based socket with direct socket. */
 	  scan->public_ip = hdr->public_ip;
 
-	  traceEvent( TRACE_NORMAL, "Sending additional REGISTER request to %s:%d",
+	  traceEvent( TRACE_NORMAL, "Sending additional REGISTER request to %s:%hd",
 		      intoa(ntohl(scan->public_ip.addr_type.v4_addr), ip_buf, sizeof(ip_buf)),
 		      ntohs(scan->public_ip.port));
 
@@ -473,7 +481,7 @@ void set_peer_operational( n2n_edge_t * eee, const struct n2n_packet_header * hd
 
       scan->public_ip = hdr->public_ip;
 
-      traceEvent(TRACE_INFO, "=== new peer [mac=%s][socket=%s:%d]",
+      traceEvent(TRACE_INFO, "=== new peer [mac=%s][socket=%s:%hd]",
 		 macaddr_str(scan->mac_addr, mac_buf, sizeof(mac_buf)),
 		 intoa(ntohl(scan->public_ip.addr_type.v4_addr), ip_buf, sizeof(ip_buf)),
 		 ntohs(scan->public_ip.port));
@@ -501,7 +509,7 @@ void trace_registrations( struct peer_info * scan )
 
   while ( scan )
     {
-      traceEvent(TRACE_INFO, "=== peer [mac=%s][socket=%s:%d]",
+      traceEvent(TRACE_INFO, "=== peer [mac=%s][socket=%s:%hd]",
 		 macaddr_str(scan->mac_addr, mac_buf, sizeof(mac_buf)),
 		 intoa(ntohl(scan->public_ip.addr_type.v4_addr), ip_buf, sizeof(ip_buf)),
 		 ntohs(scan->public_ip.port));
@@ -563,7 +571,7 @@ static void update_peer_address(n2n_edge_t * eee,
     {
       if ( 0 == hdr->sent_by_supernode )
         {
-	  traceEvent( TRACE_NORMAL, "Peer changed public socket, Was %s:%d",
+	  traceEvent( TRACE_NORMAL, "Peer changed public socket, Was %s:%hd",
 		      intoa(ntohl(hdr->public_ip.addr_type.v4_addr), ip_buf, sizeof(ip_buf)),
 		      ntohs(hdr->public_ip.port));
 
@@ -686,7 +694,7 @@ static int find_peer_destination(n2n_edge_t * eee,
 	     mac_address[3] & 0xFF, mac_address[4] & 0xFF, mac_address[5] & 0xFF);
 
   while(scan != NULL) {
-    traceEvent(TRACE_INFO, "Evaluating peer [MAC=%02X:%02X:%02X:%02X:%02X:%02X][ip=%s:%d]",
+    traceEvent(TRACE_INFO, "Evaluating peer [MAC=%02X:%02X:%02X:%02X:%02X:%02X][ip=%s:%hd]",
 	       scan->mac_addr[0] & 0xFF, scan->mac_addr[1] & 0xFF, scan->mac_addr[2] & 0xFF,
 	       scan->mac_addr[3] & 0xFF, scan->mac_addr[4] & 0xFF, scan->mac_addr[5] & 0xFF,
 	       intoa(ntohl(scan->public_ip.addr_type.v4_addr), ip_buf, sizeof(ip_buf)),
@@ -707,7 +715,7 @@ static int find_peer_destination(n2n_edge_t * eee,
       memcpy(destination, &(eee->supernode), sizeof(struct sockaddr_in));
     }
 
-  traceEvent(TRACE_INFO, "find_peer_address(%s) -> [socket=%s:%d]",
+  traceEvent(TRACE_INFO, "find_peer_address(%s) -> [socket=%s:%hd]",
              macaddr_str( (char *)mac_address, mac_buf, sizeof(mac_buf)),
              intoa(ntohl(destination->addr_type.v4_addr), ip_buf, sizeof(ip_buf)),
              ntohs(destination->port));
@@ -746,18 +754,17 @@ static void send_packet2net(n2n_edge_t * eee,
   /* Discard IP packets that are not originated by this hosts */
   if(!(eee->allow_routing)) {
     if(ntohs(eh->ether_type) == 0x0800) {
-
       /* This is an IP packet from the local source address - not forwarded. */
 #define ETH_FRAMESIZE 14
 #define IP4_SRCOFFSET 12
-#define IP4_ADDRSIZE  4
+      u_int32_t *dst = (u_int32_t*)&decrypted_msg[ETH_FRAMESIZE + IP4_SRCOFFSET];
+
       /* Note: all elements of the_ip are in network order */
-      if( 0 != memcmp( decrypted_msg + ETH_FRAMESIZE + IP4_SRCOFFSET,
-                       &(eee->device.ip_addr),
-                       IP4_ADDRSIZE ) ) {
-	/* This is a packet that needs to be routed */
-	traceEvent(TRACE_INFO, "Discarding routed packet");
-	return;
+      if( *dst != eee->device.ip_addr) {
+		/* This is a packet that needs to be routed */
+		traceEvent(TRACE_INFO, "Discarding routed packet [%s]", 
+				               intoa(ntohl(*dst), ip_buf, sizeof(ip_buf)));
+		return;
       } else {
 	/* This packet is originated by us */
 	/* traceEvent(TRACE_INFO, "Sending non-routed packet"); */
@@ -767,7 +774,7 @@ static void send_packet2net(n2n_edge_t * eee,
 
   /* Encrypt "decrypted_msg" into the second half of the n2n packet. */
   len = TwoFishEncryptRaw((u_int8_t *)decrypted_msg,
-			  (u_int8_t *)&packet[N2N_PKT_HDR_SIZE], len, eee->tf);
+			  (u_int8_t *)&packet[N2N_PKT_HDR_SIZE], len, eee->enc_tf);
 
   /* Add the n2n header to the start of the n2n packet. */
   fill_standard_header_fields( &(eee->sinfo), &hdr, (char*)(eee->device.mac_addr) );
@@ -781,7 +788,7 @@ static void send_packet2net(n2n_edge_t * eee,
   len += N2N_PKT_HDR_SIZE;
 
   if(find_peer_destination(eee, eh->ether_dhost, &destination))
-    traceEvent(TRACE_INFO, "** Going direct [dst_mac=%s][dest=%s:%d]",
+    traceEvent(TRACE_INFO, "** Going direct [dst_mac=%s][dest=%s:%hd]",
 	       macaddr_str((char*)eh->ether_dhost, mac_buf, sizeof(mac_buf)),
 	       intoa(ntohl(destination.addr_type.v4_addr), ip_buf, sizeof(ip_buf)),
 	       ntohs(destination.port));
@@ -790,7 +797,8 @@ static void send_packet2net(n2n_edge_t * eee,
 	       macaddr_str((char*)eh->ether_shost, mac_buf, sizeof(mac_buf)),
 	       macaddr_str((char*)eh->ether_dhost, mac2_buf, sizeof(mac2_buf)));
 
-  data_sent_len = reliable_sendto( &(eee->sinfo), packet, &len, &destination, 1);
+  data_sent_len = reliable_sendto( &(eee->sinfo), packet, &len, &destination, 
+                                   N2N_COMPRESSION_ENABLED);
 
   if(data_sent_len != len)
     traceEvent(TRACE_WARNING, "sendto() [sent=%d][attempted_to_send=%d] [%s]\n",
@@ -850,6 +858,8 @@ static int check_received_packet(n2n_edge_t * eee, char *pkt,
   } else if(pkt_len > 32 /* IP + Ethernet */) {
     /* Check if this packet is for us or if it's routed */
     struct ether_header *eh = (struct ether_header*)pkt;
+      
+    const struct in_addr bcast = { 0xffffffff };
 
     if(ntohs(eh->ether_type) == 0x0800) {
 
@@ -857,8 +867,14 @@ static int check_received_packet(n2n_edge_t * eee, char *pkt,
       struct ip *the_ip = (struct ip*)(pkt+sizeof(struct ether_header));
 
       if((the_ip->ip_dst.s_addr != eee->device.ip_addr)
-	 && ((the_ip->ip_dst.s_addr & eee->device.device_mask) != (eee->device.ip_addr & eee->device.device_mask))) /* Not a broadcast */
-	{
+	 && ((the_ip->ip_dst.s_addr & eee->device.device_mask) != (eee->device.ip_addr & eee->device.device_mask)) /* Not a broadcast */
+	 && ((the_ip->ip_dst.s_addr & 0xE0000000) != (0xE0000000 /* 224.0.0.0-239.255.255.255 */)) /* Not a multicast */
+	 && ((the_ip->ip_dst.s_addr) != (bcast.s_addr)) /* always broadcast (RFC919) */
+	 && (!(eee->allow_routing)) /* routing is enabled so let it in */
+	 )
+      {
+          /* Dropping the packet */
+
           ipstr_t ip_buf;
           ipstr_t ip_buf2;
 
@@ -866,7 +882,7 @@ static int check_received_packet(n2n_edge_t * eee, char *pkt,
 	  traceEvent(TRACE_INFO, "Discarding routed packet [rcvd=%s][expected=%s]",
 		     intoa(ntohl(the_ip->ip_dst.s_addr), ip_buf, sizeof(ip_buf)),
 		     intoa(ntohl(eee->device.ip_addr), ip_buf2, sizeof(ip_buf2)));
-	} else {
+      } else {
 	/* This packet is for us */
 
 	/* traceEvent(TRACE_INFO, "Received non-routed packet"); */
@@ -927,7 +943,8 @@ void readFromIPSocket( n2n_edge_t * eee )
   struct n2n_packet_header hdr_storage;
 
   len = receive_data( &(eee->sinfo), packet, sizeof(packet), &sender,
-                      &discarded_pkt, (char*)(eee->device.mac_addr), 1, &hdr_storage);
+                      &discarded_pkt, (char*)(eee->device.mac_addr), 
+                      N2N_COMPRESSION_ENABLED, &hdr_storage);
 
   if(len <= 0) return;
 
@@ -944,7 +961,7 @@ void readFromIPSocket( n2n_edge_t * eee )
       else {
 	struct n2n_packet_header *hdr = &hdr_storage;
 
-	traceEvent(TRACE_INFO, "Received packet from %s:%d",
+	traceEvent(TRACE_INFO, "Received packet from %s:%hd",
 		   intoa(ntohl(sender.addr_type.v4_addr), ip_buf, sizeof(ip_buf)),
 		   ntohs(sender.port));
 
@@ -953,7 +970,7 @@ void readFromIPSocket( n2n_edge_t * eee )
 		   hdr->sent_by_supernode ? "supernode" : "peer",
 		   macaddr_str(hdr->dst_mac, mac_buf, sizeof(mac_buf)));
 
-	if(hdr->version != N2N_VERSION) {
+	if(hdr->version != N2N_PKT_VERSION) {
 	  traceEvent(TRACE_WARNING,
 		     "Received packet with unknown protocol version (%d): discarded\n",
 		     hdr->version);
@@ -978,7 +995,7 @@ void readFromIPSocket( n2n_edge_t * eee )
 
 	    /* Decrypt message first */
 	    len = TwoFishDecryptRaw((u_int8_t *)&packet[N2N_PKT_HDR_SIZE],
-				    (u_int8_t *)decrypted_msg, len, eee->tf);
+				    (u_int8_t *)decrypted_msg, len, eee->dec_tf);
 
 	    if(len > 0) {
 	      if(check_received_packet(eee, decrypted_msg, len) == 0) {
@@ -998,13 +1015,13 @@ void readFromIPSocket( n2n_edge_t * eee )
 		  traceEvent(TRACE_INFO, "### Tx L2 Msg -> tun");
 		}
 	      } else {
-		traceEvent(TRACE_WARNING, "Bad destination: message discarded");
+			traceEvent(TRACE_WARNING, "Bad destination: message discarded");
 	      }
 	    }
 	    /* else silently ignore empty packet. */
 
 	  } else if(hdr->msg_type == MSG_TYPE_REGISTER) {
-	    traceEvent(TRACE_INFO, "Received registration request from remote peer [ip=%s:%d]",
+	    traceEvent(TRACE_INFO, "Received registration request from remote peer [ip=%s:%hd]",
 		       intoa(ntohl(hdr->public_ip.addr_type.v4_addr), ip_buf, sizeof(ip_buf)),
 		       ntohs(hdr->public_ip.port));
 	    if ( 0 == memcmp(hdr->dst_mac, (eee->device.mac_addr), 6) )
@@ -1015,7 +1032,7 @@ void readFromIPSocket( n2n_edge_t * eee )
 
 	    send_register(eee, &hdr->public_ip, 1); /* Send ACK back */
 	  } else if(hdr->msg_type == MSG_TYPE_REGISTER_ACK) {
-	    traceEvent(TRACE_NORMAL, "Received REGISTER_ACK from remote peer [ip=%s:%d]",
+	    traceEvent(TRACE_NORMAL, "Received REGISTER_ACK from remote peer [ip=%s:%hd]",
 		       intoa(ntohl(hdr->public_ip.addr_type.v4_addr), ip_buf, sizeof(ip_buf)),
 		       ntohs(hdr->public_ip.port));
 
@@ -1116,7 +1133,7 @@ static void supernode2addr(n2n_edge_t * eee, char* addr) {
       eee->supernode.addr_type.v4_addr = inet_addr(supernode_host);
     }
 
-    traceEvent(TRACE_NORMAL, "Using supernode %s:%d",
+    traceEvent(TRACE_NORMAL, "Using supernode %s:%hd",
 	       intoa(ntohl(eee->supernode.addr_type.v4_addr), ip_buf, sizeof(ip_buf)),
 	       ntohs(eee->supernode.port));
   } else
@@ -1127,10 +1144,16 @@ static void supernode2addr(n2n_edge_t * eee, char* addr) {
 
 extern int useSyslog;
 
+#define N2N_NETMASK_STR_SIZE 16 /* dotted decimal 12 numbers + 3 dots */
+
+
 int main(int argc, char* argv[]) {
   int opt, local_port = 0 /* any port */;
   char *tuntap_dev_name = "edge0";
   char *ip_addr = NULL;
+  char  netmask[N2N_NETMASK_STR_SIZE]="255.255.255.0";
+  int   mtu = DEFAULT_MTU;
+  int   got_s = 0;
 
 #ifndef WIN32
   uid_t userid=0; /* root is the only guaranteed ID */
@@ -1142,7 +1165,7 @@ int main(int argc, char* argv[]) {
   time_t lastStatus=0;
 
   char * device_mac=NULL;
-  char * encrypt_key;
+  char * encrypt_key=NULL;
 
   int     i, effectiveargc=0;
   char ** effectiveargv=NULL;
@@ -1171,6 +1194,12 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
   snprintf(linebuffer, MAX_CMDLINE_BUFFER_LENGTH, "%s",argv[0]);
+
+#ifdef WIN32
+	for(i=0; i<strlen(linebuffer); i++)
+		if(linebuffer[i] == '\\') linebuffer[i] = '/';
+#endif
+
   for(i=1;i<argc;++i) {
     if(argv[i][0] == '@') {
       if (readConfFile(&argv[i][1], linebuffer)<0) exit(1); /* <<<<----- check */
@@ -1192,7 +1221,7 @@ int main(int argc, char* argv[]) {
 
   effectiveargc =0;
   while (effectiveargv[effectiveargc]) ++effectiveargc;
-
+effectiveargv[effectiveargc] = 0;
   if (linebuffer) {
     free(linebuffer);
     linebuffer = NULL;
@@ -1201,9 +1230,10 @@ int main(int argc, char* argv[]) {
   /* {int k;for(k=0;k<effectiveargc;++k)  printf("%s\n",effectiveargv[k]);} */
 
   optarg = NULL;
-  while((opt = getopt_long(effectiveargc, effectiveargv, "k:a:bc:u:g:m:d:l:p:fvhrt", long_options, NULL)) != EOF) {
+  while((opt = getopt_long(effectiveargc, effectiveargv, "k:a:bc:u:g:m:M:s:d:l:p:fvhrt", long_options, NULL)) != EOF) {
     switch (opt) {
     case 'a':
+		  printf("%s\n", optarg);
       ip_addr = strdup(optarg);
       break;
     case 'c': /* community */
@@ -1215,23 +1245,28 @@ int main(int argc, char* argv[]) {
 
     case 'u': /* uid */
       {
-        userid=atoi(optarg);
+        userid = atoi(optarg);
         break;
       }
     case 'g': /* uid */
       {
-        groupid=atoi(optarg);
+        groupid = atoi(optarg);
         break;
       }
     case 'f' : /* fork as daemon */
       {
-        fork_as_daemon=1;
+        fork_as_daemon = 1;
         break;
       }
 #endif
     case 'm' : /* device_mac */
       {
-        device_mac=strdup(optarg);
+        device_mac = strdup(optarg);
+        break;
+      }
+    case 'M' : /* device_mac */
+      {
+        mtu = atoi(optarg);
         break;
       }
     case 'k': /* encrypt key */
@@ -1258,6 +1293,13 @@ int main(int argc, char* argv[]) {
     case 'p':
       local_port = atoi(optarg);
       break;
+    case 's': /* Subnet Mask */
+      if (0 != got_s) {
+          traceEvent(TRACE_WARNING, "Multiple subnet masks supplied.");
+      }
+      strncpy(netmask, optarg, N2N_NETMASK_STR_SIZE);
+      got_s = 1;
+      break;
     case 'h': /* help */
       help();
       break;
@@ -1283,7 +1325,7 @@ int main(int argc, char* argv[]) {
   /* setgid( 0 ); */
 #endif
 
-  if(tuntap_open(&(eee.device), tuntap_dev_name, ip_addr, "255.255.255.0", device_mac ) < 0)
+  if(tuntap_open(&(eee.device), tuntap_dev_name, ip_addr, netmask, device_mac, mtu) < 0)
     return(-1);
 
 #ifndef WIN32
