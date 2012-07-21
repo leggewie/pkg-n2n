@@ -4,7 +4,7 @@ Priority: extra
 Maintainer: cristian paul peñaranda rojas <kristian.paul@gmail.com>
 Uploaders: Rolf Leggewie <foss@rolf.leggewie.biz>
 Build-Depends: debhelper (>= 7)
-Standards-Version: 3.8.2
+Standards-Version: 3.9.3
 
 Package: n2n
 Architecture: any
