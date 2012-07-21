@@ -23,6 +23,9 @@ use IP address 10.1.2.0/24
           o #edge node1> edge -a 10.1.2.1 -c mynetwork -k encryptme -l a.b.c.d:xyw
           o #edge node2> edge -a 10.1.2.2 -c mynetwork -k encryptme -l a.b.c.d:xyw
 
+      HINT: vpnhosting.cz provides a public n2n supernode you can use for testing.
+            It is available at 88.86.108.50 port 82, use "-l 88.86.108.50:82"
+
       Now test your n2n network:
 
           o #edge node1> ping 10.1.2.2
