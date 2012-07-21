@@ -1,8 +1,0 @@
---- a/edge.8.old	2008-12-02 20:33:54.000000000 -0500
-+++ b/edge.8	2008-12-02 20:34:13.000000000 -0500
-@@ -1,4 +1,4 @@
--.TH edge 1  "Jan 3, 2009" "revision 3679" "SUPERUSER COMMANDS"
-+.TH edge 8  "Jan 3, 2009" "revision 3679" "SUPERUSER COMMANDS"
- .SH NAME
- edge \- n2n edge node daemon
- .SH SYNOPSIS
