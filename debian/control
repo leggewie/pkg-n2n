@@ -3,7 +3,7 @@ Section: net
 Priority: extra
 Maintainer: cristian paul peñaranda rojas <kristian.paul@gmail.com>
 Uploaders: Rolf Leggewie <foss@rolf.leggewie.biz>
-Build-Depends: debhelper (>= 7)
+Build-Depends: debhelper (>= 7), gnutls-dev|libssl-dev
 Standards-Version: 3.9.3
 Homepage: http://www.ntop.org/products/n2n/
 Vcs-git: git://git.debian.org/git/collab-maint/n2n.git
