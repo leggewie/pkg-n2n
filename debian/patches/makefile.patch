@@ -1,0 +1,13 @@
+diff --git a/Makefile b/Makefile
+index 485adc3..191845a 100644
+--- a/Makefile
++++ b/Makefile
+@@ -12,7 +12,7 @@ WARN?=-Wall -Wshadow -Wpointer-arith -Wmissing-declarations -Wnested-externs
+ PLATOPTS_SPARC64=-mcpu=ultrasparc -pipe -fomit-frame-pointer -ffast-math -finline-functions -fweb -frename-registers -mapp-regs
+ 
+ 
+-CFLAGS+=$(DEBUG) $(WARN) $(OPTIONS) $(PLATOPTS)
++CFLAGS+=$(DEBUG) $(WARN) $(LDFLAGS) $(CPPFLAGS) $(OPTIONS) $(PLATOPTS)
+ 
+ INSTALL=install
+ MKDIR=mkdir -p
