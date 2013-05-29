@@ -1,12 +1,14 @@
-This package was debianized by cristian paul peñaranda rojas <kristian.paul@gmail.com> on
-and is licensed under the GNU General Public License (GPL) version 3.
-A copy of the GNU GPL version 3 is in `/usr/share/common-licenses/GPL-3'.
+This package was debianized by cristian paul peñaranda rojas
+<kristian.paul@gmail.com> on Sat, 29 Nov 2008 00:31:58 -0500.
+It was downloaded from https://svn.ntop.org/svn/ntop/trunk/n2n
 
-Sat, 29 Nov 2008 00:31:58 -0500.
+The current Debian packaging is © 2008-2009 cristian paul peñaranda rojas
+and © 2012-2013 Rolf Leggewie and is licensed under the GNU General
+Public License (GPL) version 3. A copy of the GNU GPL version 3 can be
+found in `/usr/share/common-licenses/GPL-3'.
 
 The current Debian maintainer is cristian paul peñaranda rojas <kristian.paul@gmail.com>
-
-It was downloaded from https://svn.ntop.org/svn/ntop/trunk/n2n
+with Rolf Leggewie <foss@rolf.leggewie.biz> as co-maintainer.
 
 Upstream Author: Luca Deri deri@ntop.org
 
