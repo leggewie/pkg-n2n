@@ -4,7 +4,7 @@ Priority: extra
 Maintainer: cristian paul peñaranda rojas <kristian.paul@gmail.com>
 Uploaders: Rolf Leggewie <foss@rolf.leggewie.biz>
 Build-Depends: debhelper (>= 9)
-Standards-Version: 3.9.4
+Standards-Version: 3.9.6
 Homepage: http://www.ntop.org/products/n2n/
 Vcs-git: git://git.debian.org/git/collab-maint/n2n.git
 Vcs-Browser: http://git.debian.org/?p=collab-maint/n2n.git
