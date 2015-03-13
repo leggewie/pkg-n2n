@@ -3,10 +3,10 @@ QUICKSTART
 
 To establish a VPN you need to run the edge binary on all the client computers
 you want to participate.  n2n has another binary called supernode which enables
-the clients to talk to each other.  Even a comprised supernode cannot sniff the
-traffic or the passwords for clients that are connected to it so most users
-will not need to bother with running their but can simply rely on publically
-available supernodes.
+the clients to talk to each other.  Even a compromised supernode cannot sniff
+the traffic or the passwords for clients that are connected to it so most users
+will not need to bother with running their own but can simply rely on
+publically available supernodes.
 
 public n2n supernodes:
 - remoteqth.com:82
