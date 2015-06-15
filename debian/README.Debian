@@ -9,6 +9,8 @@ will not need to bother with running their own but can simply rely on
 publically available supernodes.
 
 public n2n supernodes:
+- bytemark.leggewie.org:1234 (sponsored by www.bytemark.co.uk)
+- gandi.leggewie.org:1234 (sponsored by www.gandi.net)
 - remoteqth.com:82
 
 Go through the rest of the configuration file in /etc/default/n2n and run
