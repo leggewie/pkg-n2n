@@ -66,7 +66,7 @@ do_start()
 		|| return 1
 	export N2N_KEY
 	start-stop-daemon --start --quiet --user nobody --exec $DAEMON -- \
-		-f -a $N2N_IP -c $N2N_COMMUNITY -l $N2N_SUPERNODE:$N2N_SUPERNODE_PORT \
+		-f -a $N2N_IP -c $N2N_COMMUNITY -l $N2N_SUPERNODE \
 		-u $(id -u nobody) -g $(id -g nobody) $DAEMON_ARGS \
 		|| return 2
 }
