@@ -11,7 +11,8 @@ Vcs-Browser: http://git.debian.org/?p=collab-maint/n2n.git
 
 Package: n2n
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends},
+ lsb-base (>= 3.0-6)
 Description: Peer-to-Peer VPN network daemon
  n2n is an open source VPN application which utilizes 
  a Peer-to-peer architecture for network membership 
